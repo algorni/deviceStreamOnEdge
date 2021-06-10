@@ -9,7 +9,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DeviceStreamProxyModule", "
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DeviceStreamUtil", "DeviceStreamUtil\DeviceStreamUtil.csproj", "{2BC3816C-BADB-4D96-B712-219C0A1E7F28}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeviceStreamCommon", "DeviceStreamCommon\DeviceStreamCommon.csproj", "{522FFEB5-63BD-4AE5-A650-880BC37EF373}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DeviceStreamCommon", "DeviceStreamCommon\DeviceStreamCommon.csproj", "{522FFEB5-63BD-4AE5-A650-880BC37EF373}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeviceStreamAgent", "DeviceStreamAgent\DeviceStreamAgent.csproj", "{601397CB-F8E9-4C8C-B720-AE1DC34078C1}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -33,6 +35,10 @@ Global
 		{522FFEB5-63BD-4AE5-A650-880BC37EF373}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{522FFEB5-63BD-4AE5-A650-880BC37EF373}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{522FFEB5-63BD-4AE5-A650-880BC37EF373}.Release|Any CPU.Build.0 = Release|Any CPU
+		{601397CB-F8E9-4C8C-B720-AE1DC34078C1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{601397CB-F8E9-4C8C-B720-AE1DC34078C1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{601397CB-F8E9-4C8C-B720-AE1DC34078C1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{601397CB-F8E9-4C8C-B720-AE1DC34078C1}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 
+using Microsoft.Azure.Devices;
 using System;
 using System.Net;
 using System.Net.Sockets;
@@ -10,7 +11,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Microsoft.Azure.Devices.Samples
+namespace DeviceStreamCommon
 {
     public class DeviceStreamClientHandler
     {
@@ -36,14 +37,18 @@ namespace Microsoft.Azure.Devices.Samples
 
         private static async Task HandleIncomingDataAsync(NetworkStream localStream, ClientWebSocket remoteStream, CancellationToken cancellationToken)
         {
-            byte[] receiveBuffer = new byte[10240];
+            //byte[] receiveBuffer = new byte[10240];
+            ArraySegment<byte> receiveBuffer = new ArraySegment<byte>();
+
 
             while (localStream.CanRead)
             {
                 var receiveResult = await remoteStream.ReceiveAsync(receiveBuffer, cancellationToken).ConfigureAwait(false);
 
-                await localStream.WriteAsync(receiveBuffer, 0, receiveResult.Count).ConfigureAwait(false);
+                await localStream.WriteAsync(receiveBuffer.Array, 0, receiveResult.Count).ConfigureAwait(false);
             }
+
+            Console.WriteLine("Local Stream closed.");
         }
 
         private static async Task HandleOutgoingDataAsync(NetworkStream localStream, ClientWebSocket remoteStream, CancellationToken cancellationToken)
@@ -56,16 +61,18 @@ namespace Microsoft.Azure.Devices.Samples
 
                 await remoteStream.SendAsync(new ArraySegment<byte>(buffer, 0, receiveCount), WebSocketMessageType.Binary, true, cancellationToken).ConfigureAwait(false);
             }
+
+            Console.WriteLine("Remote Stream closed.");
         }
 
 
         private static async void HandleIncomingConnectionsAndCreateStreams(string deviceId, ServiceClient serviceClient, TcpClient tcpClient, string streamName)
         {
-            DeviceStreamRequest deviceStreamRequest = new DeviceStreamRequest(streamName);
+            var deviceStreamRequest = new Microsoft.Azure.Devices.DeviceStreamRequest(streamName);
 
             using (var localStream = tcpClient.GetStream())
             {
-                DeviceStreamResponse result = await serviceClient.CreateStreamAsync(deviceId, deviceStreamRequest, CancellationToken.None).ConfigureAwait(false);
+                var result = await serviceClient.CreateStreamAsync(deviceId, deviceStreamRequest, CancellationToken.None).ConfigureAwait(false);
 
                 Console.WriteLine($"Stream response received: Name={deviceStreamRequest.StreamName} IsAccepted={result.IsAccepted}");
 
@@ -83,7 +90,7 @@ namespace Microsoft.Azure.Devices.Samples
                                 HandleOutgoingDataAsync(localStream, remoteStream, cancellationTokenSource.Token)).ConfigureAwait(false);
                         }
 
-                            Console.WriteLine("Done streaming");
+                        Console.WriteLine("Done with streaming, the session was terminated.");
                     }
                     catch (Exception ex)
                     {
@@ -91,6 +98,7 @@ namespace Microsoft.Azure.Devices.Samples
                     }
                 }
             }
+
             tcpClient.Close();
         }
 
@@ -102,11 +110,17 @@ namespace Microsoft.Azure.Devices.Samples
         /// <returns></returns>
         public async Task StartDeviceStreamSession()
         {
+            //eventually do a loop here???
+
+            Console.WriteLine($"Start listening on port {_localPort}");
+
             //start listening on the localhost at the specific port
             var tcpListener = new TcpListener(IPAddress.Loopback, _localPort);
             tcpListener.Start();
            
             var tcpClient = await tcpListener.AcceptTcpClientAsync().ConfigureAwait(false);
+
+            Console.WriteLine($"Incoming connectionon port {_localPort} start handling...");
 
             HandleIncomingConnectionsAndCreateStreams(_deviceId, _serviceClient, tcpClient, _streamName);           
         }

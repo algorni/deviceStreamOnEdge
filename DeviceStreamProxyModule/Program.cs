@@ -15,9 +15,9 @@ namespace DeviceStreamProxyModule
 {
     class Program
     {
-        static private DeviceStreamModuleHandler deviceStreamModuleHandler = null;
-
         static private CancellationTokenSource deviceStreamCancelationTokenSource = new CancellationTokenSource();
+
+        private static ModuleClient ioTHubModuleClient;
 
         static void Main(string[] args)
         {
@@ -41,8 +41,6 @@ namespace DeviceStreamProxyModule
             return tcs.Task;
         }
 
-
-
         /// <summary>
         /// Initializes the ModuleClient and sets up the callback to receive
         /// direct method callback to enable or disable the DeviceStream functionality
@@ -53,59 +51,17 @@ namespace DeviceStreamProxyModule
             ITransportSettings[] settings = { mqttSetting };
 
             // Open a connection to the Edge runtime
-            ModuleClient ioTHubModuleClient = await ModuleClient.CreateFromEnvironmentAsync(settings);
+            ioTHubModuleClient = await ModuleClient.CreateFromEnvironmentAsync(settings);            
             await ioTHubModuleClient.OpenAsync();
+            
             Console.WriteLine("IoT Hub Device Stream Proxy Module client initialized.");
 
+            Tuple<ModuleClient, CancellationTokenSource> methodHandlerParams = 
+                new Tuple<ModuleClient, CancellationTokenSource>(ioTHubModuleClient, cts);
 
-            await ioTHubModuleClient.SetMethodHandlerAsync(DeviceStreamDirectMethods.InitiateDeviceStream, InitiateDeviceStreamMethodHandler, ioTHubModuleClient);
+
+            await ioTHubModuleClient.SetMethodHandlerAsync(DeviceStreamDirectMethods.InitiateDeviceStream, DeviceStreamModuleHandler.InitiateDeviceStreamMethodHandler, methodHandlerParams);
         }
 
-
-        private static async Task<MethodResponse> InitiateDeviceStreamMethodHandler(MethodRequest methodRequest, object parameter)
-        {
-            return await Task<MethodResponse>.Run(() =>
-            {
-                ModuleClient ioTHubModuleClient = (ModuleClient)parameter;
-
-                InitiateDeviceStreamRequest initiateDeviceStreamRequest = InitiateDeviceStreamRequest.FromJson(methodRequest.DataAsJson);
-                InitiateDeviceStreamResponse initiateDeviceStreamResponse = new InitiateDeviceStreamResponse();
-
-                bool initiate = false;
-
-                if (deviceStreamModuleHandler == null)
-                {
-                    deviceStreamModuleHandler = new DeviceStreamModuleHandler(ioTHubModuleClient, initiateDeviceStreamRequest.TargetHost, initiateDeviceStreamRequest.TargetPort);
-
-                    initiate = true;
-                }
-                else
-                {
-                    if (deviceStreamModuleHandler.ActiveSession)
-                    {
-                        //a session is already there...    cannot initiate a new one 
-                        initiateDeviceStreamResponse.RequestAccepted = false;
-                        initiateDeviceStreamResponse.Reason = "A session is already open.";
-                    }
-                    else
-                    {
-                        Console.WriteLine("Probably recovering from a bad status, just reconnecting!");
-
-                        initiateDeviceStreamResponse.RequestAccepted = false;
-                        initiateDeviceStreamResponse.Reason = "A session was alrady open but not active, reinitiating.";
-
-                        initiate = true;
-                    }
-                }
-
-                if (initiate)
-                {
-                    //ok initiate the session -> this is going ASYNC!!! no return....  
-                    deviceStreamModuleHandler.StartDeviceStreamSession(deviceStreamCancelationTokenSource);
-                }
-
-                return new MethodResponse(initiateDeviceStreamResponse.GetJsonByte(), 200);
-            });           
-        }
     }
 }

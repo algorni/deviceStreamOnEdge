@@ -5,6 +5,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Globalization;
+using System.Runtime.Loader;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace DeviceStreamUtil
@@ -13,12 +15,11 @@ namespace DeviceStreamUtil
     {
         // The IoT Hub connection string. This is available under the "Shared access policies" in the Azure portal.
         private static IConfiguration configuration;
-        private static ILogger logger;
-
+      
 
         private static string ioTHubconnectionString = null; //IOTHUB_CONNECTIONSTRING
         private static string deviceId = null;  //DEVICE_ID
-        private static string moduleName = null;  //MODULE_NAME
+        private static string moduleName = null;  //MODULE_NAME (optional)
         private static int localPort; //LOCAL_PORT
         private static string streamName = null; //STREAM_NAME
         private static string remoteHost = null;  //REMOTE_HOST
@@ -28,6 +29,7 @@ namespace DeviceStreamUtil
         private static TransportType transportType = TransportType.Amqp;
         //private static TransportType s_transportType = TransportType.Amqp_WebSocket_Only;
 
+
         static async Task Main(string[] args)
         {
             configuration = new ConfigurationBuilder()
@@ -36,18 +38,8 @@ namespace DeviceStreamUtil
              .AddCommandLine(args)
              .Build();
 
-            using var loggerFactory = LoggerFactory.Create(builder =>
-            {
-                builder
-                    .AddFilter("Microsoft", LogLevel.Warning)
-                    .AddFilter("System", LogLevel.Warning)
-                    .AddFilter("DeviceStreamUtil.Program", LogLevel.Debug)
-                    .AddConsole();
-            });
-
-            logger = loggerFactory.CreateLogger<Program>();
-
-            logger.LogInformation("DeviceStreamUtil!");
+            Console.WriteLine("Hellp DeviceStreamUtil!");
+            Console.WriteLine("-----------------------");
 
 
             //checking configuration requirements
@@ -55,7 +47,7 @@ namespace DeviceStreamUtil
 
             if (string.IsNullOrEmpty(ioTHubconnectionString))
             {
-                logger.LogError("This tool requires a <IOTHUB_CONNECTIONSTRING> parameter to connect to IoT Hub to initiate the Device Stream connection.");
+                Console.WriteLine("This tool requires a <IOTHUB_CONNECTIONSTRING> parameter to connect to IoT Hub to initiate the Device Stream connection.");
                 return;
             }
 
@@ -63,24 +55,24 @@ namespace DeviceStreamUtil
 
             if (string.IsNullOrEmpty(deviceId))
             {
-                logger.LogError("This tool requires a <DEVICE_ID> parameter as target to connect with IoT Hub Device Stream.");
+                Console.WriteLine("This tool requires a <DEVICE_ID> parameter as target to connect with IoT Hub Device Stream.");
                 return;
             }
 
+            //module name can be optional
+            moduleName = configuration.GetValue<string>("MODULE_NAME",null);
 
-            moduleName = configuration.GetValue<string>("MODULE_NAME");
-
-            if (string.IsNullOrEmpty(moduleName))
-            {
-                logger.LogError("This tool requires a <MODULE_NAME> parameter as target to connect with IoT Hub Device Stream.");
-                return;
-            }            
+            //if (string.IsNullOrEmpty(moduleName))
+            //{
+            //    Console.WriteLine("This tool requires a <MODULE_NAME> parameter as target to connect with IoT Hub Device Stream.");
+            //    return;
+            //}            
 
             localPort = configuration.GetValue<int>("LOCAL_PORT",0);
 
             if (localPort==0)
             {
-                logger.LogError("This tool requires a <LOCAL_PORT> parameter as local port to which listen for incoming connection requests for Device Stream.");
+                Console.WriteLine("This tool requires a <LOCAL_PORT> parameter as local port to which listen for incoming connection requests for Device Stream.");
                 return;
             }
 
@@ -88,7 +80,7 @@ namespace DeviceStreamUtil
 
             if (string.IsNullOrEmpty(streamName))
             {
-                logger.LogError("This tool requires a <STREAM_NAME> parameter as name of the IoT Hub Device Stream session name.");
+                Console.WriteLine("This tool requires a <STREAM_NAME> parameter as name of the IoT Hub Device Stream session name.");
                 return;
             }
 
@@ -96,7 +88,7 @@ namespace DeviceStreamUtil
 
             if (remotePort == 0)
             {
-                logger.LogError("This tool requires a <REMOTE_PORT> parameter as remote port to terminate the incoming connection requests into.");
+                Console.WriteLine("This tool requires a <REMOTE_PORT> parameter as remote port to terminate the incoming connection requests into.");
                 return;
             }
 
@@ -104,46 +96,82 @@ namespace DeviceStreamUtil
 
             if (string.IsNullOrEmpty(remoteHost))
             {
-                logger.LogError("This tool requires a <REMOTE_HOST> parameter as target to connect with IoT Hub Device Stream.");
+                Console.WriteLine("This tool requires a <REMOTE_HOST> parameter as target to connect with IoT Hub Device Stream.");
                 return;
             }
 
+            var cts = new CancellationTokenSource();
 
             //initiate a client to IoT Hub 
-            using (ServiceClient serviceClient = ServiceClient.CreateFromConnectionString(ioTHubconnectionString, transportType))
+            ServiceClient serviceClient = ServiceClient.CreateFromConnectionString(ioTHubconnectionString, transportType);
+            
+            Console.WriteLine("Service Client connected");
+
+            var methodRequest = new CloudToDeviceMethod(DeviceStreamDirectMethods.InitiateDeviceStream);
+
+            InitiateDeviceStreamRequest requestPayload = new InitiateDeviceStreamRequest() { TargetHost = remoteHost, TargetPort = remotePort };
+
+            methodRequest.SetPayloadJson(requestPayload.ToJson());
+
+            //perform a Direct Method to the remote device to initiate the device stream!
+            CloudToDeviceMethodResult response = null;
+
+            if (!string.IsNullOrEmpty(moduleName))
+            { 
+                Console.WriteLine("Performing remote Module DirectMethod call to enable Device Stream");
+
+                response = await serviceClient.InvokeDeviceMethodAsync(deviceId, moduleName, methodRequest);
+            }
+            else
             {
-                var methodRequest = new CloudToDeviceMethod(DeviceStreamDirectMethods.InitiateDeviceStream);
+                Console.WriteLine("Performing remote Device DirectMethod call to enable Device Stream");
 
-                InitiateDeviceStreamRequest requestPayload = new InitiateDeviceStreamRequest() { TargetHost = remoteHost, TargetPort = remotePort };
+                response = await serviceClient.InvokeDeviceMethodAsync(deviceId, methodRequest);
+            }                
 
-                methodRequest.SetPayloadJson(requestPayload.ToJson());
+            if (response.Status == 200)
+            {
+                InitiateDeviceStreamResponse responseBody = InitiateDeviceStreamResponse.FromJson(response.GetPayloadAsJson());
 
-                //perform a Direct Method to the remote module to initiate the device stream!
-                var response = await serviceClient.InvokeDeviceMethodAsync(deviceId, moduleName, methodRequest);
-
-                if (response.Status == 200)
+                if (responseBody.RequestAccepted)
                 {
-                    InitiateDeviceStreamResponse responseBody = InitiateDeviceStreamResponse.FromJson(response.GetPayloadAsJson());
+                    Console.WriteLine($"Device Stream request accepted: {responseBody.Reason}");
 
-                    if (responseBody.RequestAccepted)
-                    {
-                        logger.LogInformation($"Device Stream request accepted: {responseBody.Reason}");
+                    var deviceStreamClientHandler = new DeviceStreamClientHandler(serviceClient, deviceId, localPort, streamName);
 
-                        var sample = new DeviceStreamClientHandler(serviceClient, deviceId, localPort, streamName);
-                        sample.StartDeviceStreamSession().GetAwaiter().GetResult();
-                    }
-                    else
-                    {
-                        logger.LogError($"Error while initiating the Device Stream - {responseBody.Reason}");
-                    }
+                    //start streaming session when an incoming request will happens
+                    await deviceStreamClientHandler.StartDeviceStreamSession();
+
+                    Console.WriteLine($"Streaming session initialized. Main Thread sleeping.");
                 }
                 else
                 {
-                    logger.LogError("Error while calling remote method to initiate the Device Stream");
+                    Console.WriteLine($"Error while initiating the Device Stream: {responseBody.Reason}");
                 }
             }
+            else
+            {
+                Console.WriteLine("Error while calling remote method to initiate the Device Stream");
+            }
+            
 
-            logger.LogInformation("Done.");
+            // Wait until the app unloads or is cancelled            
+            AssemblyLoadContext.Default.Unloading += (ctx) => cts.Cancel();
+            Console.CancelKeyPress += (sender, cpe) => cts.Cancel();
+            WhenCancelled(cts.Token).Wait();
+
+            Console.WriteLine("Done Closing the app.");
         }
+
+        /// <summary>
+        /// Handles cleanup operations when app is cancelled or unloads
+        /// </summary>
+        public static Task WhenCancelled(CancellationToken cancellationToken)
+        {
+            var tcs = new TaskCompletionSource<bool>();
+            cancellationToken.Register(s => ((TaskCompletionSource<bool>)s).SetResult(true), tcs);
+            return tcs.Task;
+        }
+       
     }
 }

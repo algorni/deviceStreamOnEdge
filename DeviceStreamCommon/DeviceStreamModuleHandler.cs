@@ -1,5 +1,6 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
+using Microsoft.Azure.Devices.Client;
 using System;
 using System.Net;
 using System.Net.Sockets;
@@ -8,10 +9,13 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Microsoft.Azure.Devices.Client.Samples
+namespace DeviceStreamCommon
 {
     public class DeviceStreamModuleHandler
     {
+        //static instance of this handler class
+        private static DeviceStreamModuleHandler deviceStreamModuleHandler = null;
+
         private ModuleClient _moduleClient;
                 
         private String _host;
@@ -39,15 +43,74 @@ namespace Microsoft.Azure.Devices.Client.Samples
         }
 
 
+        public static async Task<MethodResponse> InitiateDeviceStreamMethodHandler(MethodRequest methodRequest, object parameter)
+        {
+            Console.WriteLine("InitiateDeviceStreamMethod was invoked remoetly to enable DeviceStream!");
+
+            //i'm expecting a Device Client and the Cancelation Token Source as parameter...
+            Tuple<ModuleClient, CancellationTokenSource> parameters = (Tuple<ModuleClient, CancellationTokenSource>)parameter;
+
+            InitiateDeviceStreamRequest initiateDeviceStreamRequest = InitiateDeviceStreamRequest.FromJson(methodRequest.DataAsJson);
+            InitiateDeviceStreamResponse initiateDeviceStreamResponse = new InitiateDeviceStreamResponse();
+
+            bool initiate = false;
+
+            if (deviceStreamModuleHandler == null)
+            {
+                deviceStreamModuleHandler = new DeviceStreamModuleHandler(parameters.Item1, initiateDeviceStreamRequest.TargetHost, initiateDeviceStreamRequest.TargetPort);
+
+                initiateDeviceStreamResponse.RequestAccepted = true;
+                initiateDeviceStreamResponse.Reason = "This is a brand new session!";
+
+                initiate = true;
+            }
+            else
+            {
+                if (deviceStreamModuleHandler.ActiveSession)
+                {
+                    //a session is already there...    cannot initiate a new one 
+                    initiateDeviceStreamResponse.RequestAccepted = false;
+                    initiateDeviceStreamResponse.Reason = "A session is already open.";
+
+                    Console.WriteLine(initiateDeviceStreamResponse.Reason);
+                }
+                else
+                {
+                    Console.WriteLine("Probably recovering from a bad status, just reconnecting!");
+
+                    initiateDeviceStreamResponse.RequestAccepted = true;
+                    initiateDeviceStreamResponse.Reason = "A session was alrady open but not active, reinitiating.";
+
+                    Console.WriteLine(initiateDeviceStreamResponse.Reason);
+
+                    initiate = true;
+                }
+            }
+
+            if (initiate)
+            {
+                Console.WriteLine("Starting Device Stream");
+
+                //start a background task opening the Device Stream session and waiting for connection from the service side
+                Task.Factory.StartNew(() => deviceStreamModuleHandler.StartDeviceStreamSession(parameters.Item2));
+            }
+
+            Console.WriteLine($"Returning the Direct Method response: {initiateDeviceStreamResponse.RequestAccepted} - {initiateDeviceStreamResponse.Reason}");
+
+            return new MethodResponse(initiateDeviceStreamResponse.GetJsonByte(), 200);
+        }
+
+
         private static async Task HandleIncomingDataAsync(NetworkStream localStream, ClientWebSocket remoteStream, CancellationToken cancellationToken)
         {
-            byte[] buffer = new byte[10240];
+            //byte[] buffer = new byte[10240];
+            ArraySegment<byte> buffer = new ArraySegment<byte>();
 
             while (remoteStream.State == WebSocketState.Open)
             {
                 var receiveResult = await remoteStream.ReceiveAsync(buffer, cancellationToken).ConfigureAwait(false);
 
-                await localStream.WriteAsync(buffer, 0, receiveResult.Count).ConfigureAwait(false);
+                await localStream.WriteAsync(buffer.Array, 0, receiveResult.Count).ConfigureAwait(false);
             }
         }
 
@@ -103,6 +166,8 @@ namespace Microsoft.Azure.Devices.Client.Samples
                                     HandleOutgoingDataAsync(localStream, webSocket, cancellationTokenSource.Token)).ConfigureAwait(false);
 
                                 localStream.Close();
+
+                                Console.WriteLine("Session closed.");
 
                                 ActiveSession = false;
                             }
