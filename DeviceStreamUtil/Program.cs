@@ -1,6 +1,5 @@
 ﻿using DeviceStreamCommon;
 using Microsoft.Azure.Devices;
-using Microsoft.Azure.Devices.Samples;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System;
@@ -118,13 +117,13 @@ namespace DeviceStreamUtil
 
             if (!string.IsNullOrEmpty(moduleName))
             { 
-                Console.WriteLine("Performing remote Module DirectMethod call to enable Device Stream");
+                Console.WriteLine($"Performing remote Module DirectMethod call to enable Device Stream on remote host: {remoteHost}:{remotePort}");
 
                 response = await serviceClient.InvokeDeviceMethodAsync(deviceId, moduleName, methodRequest);
             }
             else
             {
-                Console.WriteLine("Performing remote Device DirectMethod call to enable Device Stream");
+                Console.WriteLine($"Performing remote Device DirectMethod call to enable Device Stream on remote host: {remoteHost}:{remotePort}");
 
                 response = await serviceClient.InvokeDeviceMethodAsync(deviceId, methodRequest);
             }                
@@ -158,6 +157,7 @@ namespace DeviceStreamUtil
             // Wait until the app unloads or is cancelled            
             AssemblyLoadContext.Default.Unloading += (ctx) => cts.Cancel();
             Console.CancelKeyPress += (sender, cpe) => cts.Cancel();
+
             WhenCancelled(cts.Token).Wait();
 
             Console.WriteLine("Done Closing the app.");
