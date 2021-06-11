@@ -147,18 +147,28 @@ namespace DeviceStreamCommon
         /// <returns></returns>
         public async void StartDeviceStreamSession(CancellationTokenSource cancellationTokenSource)
         {
+            Console.WriteLine("Entering StartDeviceStreamSession");
+
             try
             {
                 //wait for a device stream request from the service side....
                 DeviceStreamRequest streamRequest = await _moduleClient.WaitForDeviceStreamRequestAsync(cancellationTokenSource.Token).ConfigureAwait(false);
 
+                Console.WriteLine("Stream Request received from IoT Hub");
+
                 if (streamRequest != null)
                 {
+                    Console.WriteLine("Now accepting Stream Request received from IoT Hub");
+
                     await _moduleClient.AcceptDeviceStreamRequestAsync(streamRequest, cancellationTokenSource.Token).ConfigureAwait(false);
+
+                    Console.WriteLine("Now Opening WebSocket stream to IoT Hub");
 
                     //get the websocket connection open & authenticated using the token 
                     using (ClientWebSocket webSocket = await DeviceStreamCommon.StreamingClientHelper.GetStreamingClientAsync(streamRequest.Uri, streamRequest.AuthorizationToken, cancellationTokenSource.Token).ConfigureAwait(false))
                     {
+                        Console.WriteLine($"Now Opening local stream to target {TargetHost}:{TargetPort}");
+
                         using (TcpClient tcpClient = new TcpClient())
                         {
                             //open a TCP connection to a local endpoint
