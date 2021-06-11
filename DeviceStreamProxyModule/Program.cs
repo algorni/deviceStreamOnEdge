@@ -24,10 +24,10 @@ namespace DeviceStreamProxyModule
             Init().Wait();
 
             // Wait until the app unloads or is cancelled
-            var cts = new CancellationTokenSource();
-            AssemblyLoadContext.Default.Unloading += (ctx) => cts.Cancel();
-            Console.CancelKeyPress += (sender, cpe) => cts.Cancel();
-            WhenCancelled(cts.Token).Wait();
+            deviceStreamCancelationTokenSource = new CancellationTokenSource();
+            AssemblyLoadContext.Default.Unloading += (ctx) => deviceStreamCancelationTokenSource.Cancel();
+            Console.CancelKeyPress += (sender, cpe) => deviceStreamCancelationTokenSource.Cancel();
+            WhenCancelled(deviceStreamCancelationTokenSource.Token).Wait();
         }
 
         /// <summary>
@@ -56,7 +56,7 @@ namespace DeviceStreamProxyModule
             Console.WriteLine("IoT Hub Device Stream Proxy Module client initialized.");
 
             Tuple<ModuleClient, CancellationTokenSource> methodHandlerParams = 
-                new Tuple<ModuleClient, CancellationTokenSource>(ioTHubModuleClient, cts);
+                new Tuple<ModuleClient, CancellationTokenSource>(ioTHubModuleClient, deviceStreamCancelationTokenSource);
 
 
             await ioTHubModuleClient.SetMethodHandlerAsync(DeviceStreamDirectMethods.InitiateDeviceStream, DeviceStreamModuleHandler.InitiateDeviceStreamMethodHandler, methodHandlerParams);
