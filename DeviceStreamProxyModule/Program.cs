@@ -1,6 +1,5 @@
 using DeviceStreamCommon;
 using Microsoft.Azure.Devices.Client;
-using Microsoft.Azure.Devices.Client.Samples;
 using Microsoft.Azure.Devices.Client.Transport.Mqtt;
 using System;
 using System.IO;
