@@ -14,20 +14,24 @@ namespace DeviceStreamProxyModule
 {
     class Program
     {
-        static private CancellationTokenSource deviceStreamCancelationTokenSource = new CancellationTokenSource();
+        static private CancellationTokenSource cts = new CancellationTokenSource();
 
-        private static ModuleClient ioTHubModuleClient;
+        private static ModuleClient moduleClient;
 
         static void Main(string[] args)
         {
+            Console.WriteLine("Hello DeviceStreamModule");
+            Console.WriteLine("-----------------------");
+
             //Initialize Application
             Init().Wait();
 
             // Wait until the app unloads or is cancelled
-            deviceStreamCancelationTokenSource = new CancellationTokenSource();
-            AssemblyLoadContext.Default.Unloading += (ctx) => deviceStreamCancelationTokenSource.Cancel();
-            Console.CancelKeyPress += (sender, cpe) => deviceStreamCancelationTokenSource.Cancel();
-            WhenCancelled(deviceStreamCancelationTokenSource.Token).Wait();
+            AssemblyLoadContext.Default.Unloading += (ctx) => cts.Cancel();
+            Console.CancelKeyPress += (sender, cpe) => cts.Cancel();
+            WhenCancelled(cts.Token).Wait();
+
+            Console.WriteLine("Done.");
         }
 
         /// <summary>
@@ -50,16 +54,18 @@ namespace DeviceStreamProxyModule
             ITransportSettings[] settings = { mqttSetting };
 
             // Open a connection to the Edge runtime
-            ioTHubModuleClient = await ModuleClient.CreateFromEnvironmentAsync(settings);            
-            await ioTHubModuleClient.OpenAsync();
+            moduleClient = await ModuleClient.CreateFromEnvironmentAsync(settings);            
+            await moduleClient.OpenAsync();
             
             Console.WriteLine("IoT Hub Device Stream Proxy Module client initialized.");
 
             Tuple<ModuleClient, CancellationTokenSource> methodHandlerParams = 
-                new Tuple<ModuleClient, CancellationTokenSource>(ioTHubModuleClient, deviceStreamCancelationTokenSource);
+                new Tuple<ModuleClient, CancellationTokenSource>(moduleClient, cts);
 
+            await moduleClient.SetMethodHandlerAsync(DeviceStreamDirectMethods.InitiateDeviceStream, 
+                DeviceStreamModuleHandler.InitiateDeviceStreamMethodHandler, methodHandlerParams);
 
-            await ioTHubModuleClient.SetMethodHandlerAsync(DeviceStreamDirectMethods.InitiateDeviceStream, DeviceStreamModuleHandler.InitiateDeviceStreamMethodHandler, methodHandlerParams);
+            Console.WriteLine("Waiting for initial DirectMethod call to enable Device Stream");
         }
 
     }

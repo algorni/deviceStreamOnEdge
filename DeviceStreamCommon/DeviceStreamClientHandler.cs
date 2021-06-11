@@ -15,10 +15,13 @@ namespace DeviceStreamCommon
 {
     public class DeviceStreamClientHandler
     {
+        private CancellationTokenSource _cancellationTokenSource;
         private ServiceClient _serviceClient;
         private String _deviceId;
         private int _localPort;
         private string _streamName;
+
+
 
         /// <summary>
         /// ctor
@@ -27,19 +30,22 @@ namespace DeviceStreamCommon
         /// <param name="deviceId"></param>
         /// <param name="localPort"></param>
         /// <param name="streamName"></param>
-        public DeviceStreamClientHandler(ServiceClient deviceClient, String deviceId, int localPort, string streamName)
+        public DeviceStreamClientHandler(ServiceClient deviceClient, String deviceId, int localPort, string streamName, CancellationTokenSource cancellationTokenSource)
         {
             _serviceClient = deviceClient;
             _deviceId = deviceId;
             _localPort = localPort;
             _streamName = streamName;
+            _cancellationTokenSource = cancellationTokenSource;
         }
-
+        
+        
+        
+        
         private static async Task HandleIncomingDataAsync(NetworkStream localStream, ClientWebSocket remoteStream, CancellationToken cancellationToken)
-        {
-            //byte[] receiveBuffer = new byte[10240];
-            ArraySegment<byte> receiveBuffer = new ArraySegment<byte>();
-
+        {         
+            byte[] bufferObj = new byte[10240];
+            ArraySegment<byte> receiveBuffer = new ArraySegment<byte>(bufferObj, 0, bufferObj.Length);
 
             while (localStream.CanRead)
             {
@@ -48,7 +54,7 @@ namespace DeviceStreamCommon
                 await localStream.WriteAsync(receiveBuffer.Array, 0, receiveResult.Count).ConfigureAwait(false);
             }
 
-            Console.WriteLine("Local Stream closed.");
+            Console.WriteLine("Exit HandleIncomingDataAsync");
         }
 
         private static async Task HandleOutgoingDataAsync(NetworkStream localStream, ClientWebSocket remoteStream, CancellationToken cancellationToken)
@@ -62,11 +68,11 @@ namespace DeviceStreamCommon
                 await remoteStream.SendAsync(new ArraySegment<byte>(buffer, 0, receiveCount), WebSocketMessageType.Binary, true, cancellationToken).ConfigureAwait(false);
             }
 
-            Console.WriteLine("Remote Stream closed.");
+            Console.WriteLine("Exit HandleOutgoingDataAsync");
         }
 
 
-        private static async void HandleIncomingConnectionsAndCreateStreams(string deviceId, ServiceClient serviceClient, TcpClient tcpClient, string streamName)
+        private static async void HandleIncomingConnectionsAndStartStreamSession(string deviceId, ServiceClient serviceClient, TcpClient tcpClient, string streamName, CancellationTokenSource cancellationTokenSource)
         {
             var deviceStreamRequest = new Microsoft.Azure.Devices.DeviceStreamRequest(streamName);
 
@@ -80,7 +86,6 @@ namespace DeviceStreamCommon
                 {
                     try
                     {
-                        using (var cancellationTokenSource = new CancellationTokenSource())
                         using (var remoteStream = await DeviceStreamCommon.StreamingClientHelper.GetStreamingClientAsync(result.Uri, result.AuthorizationToken, cancellationTokenSource.Token).ConfigureAwait(false))
                         {
                             Console.WriteLine("Starting streaming");
@@ -95,34 +100,35 @@ namespace DeviceStreamCommon
                     catch (Exception ex)
                     {
                         Console.WriteLine("Got an exception: {0}", ex);
-                    }
+                    }                                        
                 }
             }
 
             tcpClient.Close();
+
+            cancellationTokenSource.Cancel();
         }
 
+       
 
         /// <summary>
         /// Start Device Stream Session
         /// </summary>
         /// <param name="cancellationTokenSource"></param>
         /// <returns></returns>
-        public async Task StartDeviceStreamSession()
-        {
-            //eventually do a loop here???
-
+        public async Task StartListeningLocalPort()
+        {            
             Console.WriteLine($"Start listening on port {_localPort}");
 
             //start listening on the localhost at the specific port
             var tcpListener = new TcpListener(IPAddress.Loopback, _localPort);
             tcpListener.Start();
-           
+
             var tcpClient = await tcpListener.AcceptTcpClientAsync().ConfigureAwait(false);
 
             Console.WriteLine($"Incoming connectionon port {_localPort} start handling...");
 
-            HandleIncomingConnectionsAndCreateStreams(_deviceId, _serviceClient, tcpClient, _streamName);           
+            Task.Factory.StartNew(() => HandleIncomingConnectionsAndStartStreamSession(_deviceId, _serviceClient, tcpClient, _streamName, _cancellationTokenSource) );                  
         }
     }
 }

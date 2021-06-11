@@ -60,13 +60,7 @@ namespace DeviceStreamUtil
 
             //module name can be optional
             moduleName = configuration.GetValue<string>("MODULE_NAME",null);
-
-            //if (string.IsNullOrEmpty(moduleName))
-            //{
-            //    Console.WriteLine("This tool requires a <MODULE_NAME> parameter as target to connect with IoT Hub Device Stream.");
-            //    return;
-            //}            
-
+            
             localPort = configuration.GetValue<int>("LOCAL_PORT",0);
 
             if (localPort==0)
@@ -106,6 +100,7 @@ namespace DeviceStreamUtil
             
             Console.WriteLine("Service Client connected");
 
+            //initiating the Direct Method to start the stream on the other end...
             var methodRequest = new CloudToDeviceMethod(DeviceStreamDirectMethods.InitiateDeviceStream);
 
             InitiateDeviceStreamRequest requestPayload = new InitiateDeviceStreamRequest() { TargetHost = remoteHost, TargetPort = remotePort };
@@ -117,13 +112,13 @@ namespace DeviceStreamUtil
 
             if (!string.IsNullOrEmpty(moduleName))
             { 
-                Console.WriteLine($"Performing remote Module DirectMethod call to enable Device Stream on remote host: {remoteHost}:{remotePort}");
+                Console.WriteLine($"Performing remote Module DirectMethod call to Device: {deviceId} Module: {moduleName} to enable Device Stream on remote host: {remoteHost}:{remotePort}");
 
                 response = await serviceClient.InvokeDeviceMethodAsync(deviceId, moduleName, methodRequest);
             }
             else
             {
-                Console.WriteLine($"Performing remote Device DirectMethod call to enable Device Stream on remote host: {remoteHost}:{remotePort}");
+                Console.WriteLine($"Performing remote Device DirectMethod call to Device: {deviceId} to enable Device Stream on remote host: {remoteHost}:{remotePort}");
 
                 response = await serviceClient.InvokeDeviceMethodAsync(deviceId, methodRequest);
             }                
@@ -136,10 +131,10 @@ namespace DeviceStreamUtil
                 {
                     Console.WriteLine($"Device Stream request accepted: {responseBody.Reason}");
 
-                    var deviceStreamClientHandler = new DeviceStreamClientHandler(serviceClient, deviceId, localPort, streamName);
+                    var deviceStreamClientHandler = new DeviceStreamClientHandler(serviceClient, deviceId, localPort, streamName,cts);
 
                     //start streaming session when an incoming request will happens
-                    await deviceStreamClientHandler.StartDeviceStreamSession();
+                    await deviceStreamClientHandler.StartListeningLocalPort();
 
                     Console.WriteLine($"Streaming session initialized. Main Thread sleeping.");
                 }
@@ -157,7 +152,6 @@ namespace DeviceStreamUtil
             // Wait until the app unloads or is cancelled            
             AssemblyLoadContext.Default.Unloading += (ctx) => cts.Cancel();
             Console.CancelKeyPress += (sender, cpe) => cts.Cancel();
-
             WhenCancelled(cts.Token).Wait();
 
             Console.WriteLine("Done Closing the app.");

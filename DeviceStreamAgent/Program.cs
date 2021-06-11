@@ -22,8 +22,8 @@ namespace DeviceStreamAgent
 
         static void Main(string[] args)
         {
-            Console.WriteLine("Hello DeviceStreamAgent!");
-            Console.WriteLine("------------------------");
+            Console.WriteLine("Hello DeviceStreamAgent");
+            Console.WriteLine("-----------------------");
 
             configuration = new ConfigurationBuilder()
             .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
@@ -37,13 +37,24 @@ namespace DeviceStreamAgent
             //Initialize Application
             Init().Wait();
 
+            // Wait until the app unloads or is cancelled
             AssemblyLoadContext.Default.Unloading += (ctx) => cts.Cancel();
             Console.CancelKeyPress += (sender, cpe) => cts.Cancel();
             WhenCancelled(cts.Token).Wait();
 
             Console.WriteLine("Done.");
         }
-            
+
+        /// <summary>
+        /// Handles cleanup operations when app is cancelled or unloads
+        /// </summary>
+        public static Task WhenCancelled(CancellationToken cancellationToken)
+        {
+            var tcs = new TaskCompletionSource<bool>();
+            cancellationToken.Register(s => ((TaskCompletionSource<bool>)s).SetResult(true), tcs);
+            return tcs.Task;
+        }
+
         /// <summary>
         /// Initializes the DeviceClient and sets up the callback to receive
         /// direct method callback to enable or disable the DeviceStream functionality
@@ -67,19 +78,10 @@ namespace DeviceStreamAgent
             Tuple<DeviceClient, CancellationTokenSource> methodHandlerParams = 
                 new Tuple<DeviceClient, CancellationTokenSource>(deviceClient, cts);
           
-            await deviceClient.SetMethodHandlerAsync(DeviceStreamDirectMethods.InitiateDeviceStream, DeviceStreamDeviceHandler.InitiateDeviceStreamMethodHandler, methodHandlerParams);
+            await deviceClient.SetMethodHandlerAsync(DeviceStreamDirectMethods.InitiateDeviceStream, 
+                DeviceStreamDeviceHandler.InitiateDeviceStreamMethodHandler, methodHandlerParams);
 
-            Console.WriteLine("Waiting for DirectMethod call to enable Device Stream");
-        }
-
-        /// <summary>
-        /// Handles cleanup operations when app is cancelled or unloads
-        /// </summary>
-        public static Task WhenCancelled(CancellationToken cancellationToken)
-        {
-            var tcs = new TaskCompletionSource<bool>();
-            cancellationToken.Register(s => ((TaskCompletionSource<bool>)s).SetResult(true), tcs);
-            return tcs.Task;
+            Console.WriteLine("Waiting for initial DirectMethod call to enable Device Stream");
         }
     }
 }
