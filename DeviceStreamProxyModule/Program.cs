@@ -50,8 +50,13 @@ namespace DeviceStreamProxyModule
         /// </summary>
         static async Task Init()
         {
-            MqttTransportSettings mqttSetting = new MqttTransportSettings(TransportType.Mqtt_Tcp_Only);
-            ITransportSettings[] settings = { mqttSetting };
+            
+            //var trasnportSetting = new Http1TransportSettings();
+            var trasnportSetting = new AmqpTransportSettings(TransportType.Amqp_Tcp_Only);
+            //var trasnportSetting = new MqttTransportSettings(TransportType.Mqtt_Tcp_Only);
+            ITransportSettings[] settings = { trasnportSetting };
+
+            Console.WriteLine($"Transport Type {settings[0].GetTransportType()}");
 
             // Open a connection to the Edge runtime
             moduleClient = await ModuleClient.CreateFromEnvironmentAsync(settings);            
