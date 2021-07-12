@@ -18,6 +18,8 @@ Remember that give Device Stream is still in Public Preview is available without
 
 Below you can find the Repo Structure.
 
+![image](https://user-images.githubusercontent.com/45007019/125340804-32dbfa00-e353-11eb-972f-893f328866d7.png)
+
 *DeviceStreamAgent* folder contains the source code of the "Device Agent" which initiate a DeviceClient and register for the Direct Method call.
 
 *DeviceStreamCLI* folder contains the source code for the command line util to initiate the Device Stream via a Direct Method call to the target device (or module) and listen to the local port for tunneling the TCP connection.
