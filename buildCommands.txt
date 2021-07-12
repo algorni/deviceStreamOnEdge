@@ -1,0 +1,1 @@
+az acr build --image acs4iot4fta.azurecr.io/devicestreamagent:a1 --registry acs4iot4fta --file .\DeviceStreamAgent\Dockerfile.arm32v7 .

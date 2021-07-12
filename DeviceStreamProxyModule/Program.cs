@@ -49,11 +49,10 @@ namespace DeviceStreamProxyModule
         /// direct method callback to enable or disable the DeviceStream functionality
         /// </summary>
         static async Task Init()
-        {
-            
+        {            
             //var trasnportSetting = new Http1TransportSettings();
-            var trasnportSetting = new AmqpTransportSettings(TransportType.Amqp_Tcp_Only);
-            //var trasnportSetting = new MqttTransportSettings(TransportType.Mqtt_Tcp_Only);
+            //var trasnportSetting = new AmqpTransportSettings(TransportType.Amqp_Tcp_Only);
+            var trasnportSetting = new MqttTransportSettings(TransportType.Mqtt_Tcp_Only);
             ITransportSettings[] settings = { trasnportSetting };
 
             Console.WriteLine($"Transport Type {settings[0].GetTransportType()}");
@@ -63,12 +62,14 @@ namespace DeviceStreamProxyModule
             await moduleClient.OpenAsync();
             
             Console.WriteLine("IoT Hub Device Stream Proxy Module client initialized.");
+            
+            Tuple<DeviceStreamClientWrapper, CancellationTokenSource> methodHandlerParams = 
+                new Tuple<DeviceStreamClientWrapper, CancellationTokenSource>(new DeviceStreamClientWrapper(moduleClient), cts);
 
-            Tuple<ModuleClient, CancellationTokenSource> methodHandlerParams = 
-                new Tuple<ModuleClient, CancellationTokenSource>(moduleClient, cts);
-
-            await moduleClient.SetMethodHandlerAsync(DeviceStreamDirectMethods.InitiateDeviceStream, 
-                DeviceStreamModuleHandler.InitiateDeviceStreamMethodHandler, methodHandlerParams);
+            await moduleClient.SetMethodHandlerAsync(
+                DeviceStreamDeviceHelper.InitiateDeviceStream, //the name of the Direct Method 
+                DeviceStreamDeviceHelper.InitiateDeviceStreamMethodHandler,  //the Direct Method handler code
+                methodHandlerParams);
 
             Console.WriteLine("Waiting for initial DirectMethod call to enable Device Stream");
         }

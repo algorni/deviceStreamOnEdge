@@ -14,7 +14,7 @@ namespace DeviceStreamAgent
 
         private static string deviceConnectionString;
      
-        private static TransportType transportType = TransportType.Amqp;
+        private static TransportType transportType = TransportType.Mqtt;
         
         private static DeviceClient deviceClient;
 
@@ -69,17 +69,23 @@ namespace DeviceStreamAgent
                 Console.WriteLine("This tool requires a <DEVICE_CONNECTIONSTRING> parameter to connect to IoT Hub as Device.");
                 return;
             }
+            else
+            {
+                Console.WriteLine($"Connecting as: {deviceConnectionString}");
+            }
             
             //create the Device Client
             deviceClient = DeviceClient.CreateFromConnectionString(deviceConnectionString, transportType);
 
             Console.WriteLine("Device Client connected");
 
-            Tuple<DeviceClient, CancellationTokenSource> methodHandlerParams = 
-                new Tuple<DeviceClient, CancellationTokenSource>(deviceClient, cts);
+            Tuple<DeviceStreamClientWrapper, CancellationTokenSource> methodHandlerParams = 
+                new Tuple<DeviceStreamClientWrapper, CancellationTokenSource>(new DeviceStreamClientWrapper(deviceClient), cts);
           
-            await deviceClient.SetMethodHandlerAsync(DeviceStreamDirectMethods.InitiateDeviceStream, 
-                DeviceStreamDeviceHandler.InitiateDeviceStreamMethodHandler, methodHandlerParams);
+            await deviceClient.SetMethodHandlerAsync(
+                DeviceStreamDeviceHelper.InitiateDeviceStream, //the name of the Direct Method 
+                DeviceStreamDeviceHelper.InitiateDeviceStreamMethodHandler,  //the Direct Method handler code
+                methodHandlerParams);
 
             Console.WriteLine("Waiting for initial DirectMethod call to enable Device Stream");
         }

@@ -11,6 +11,11 @@ namespace DeviceStreamCommon
         public int TargetPort { get; set; }
 
         /// <summary>
+        /// Use a different Device Client to connect to the Stream
+        /// </summary>
+        public string UseDeviceConnectionString { get; set; }
+
+        /// <summary>
         /// static ctor
         /// </summary>
         /// <param name="dataAsJson"></param>

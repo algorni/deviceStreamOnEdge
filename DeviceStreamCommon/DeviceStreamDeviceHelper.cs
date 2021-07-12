@@ -12,12 +12,12 @@ using System.Threading.Tasks;
 
 namespace DeviceStreamCommon
 {
-    public class DeviceStreamDeviceHandler
+    public class DeviceStreamDeviceHelper
     {
         //static instance of this handler class
-        private static DeviceStreamDeviceHandler deviceStreamDeviceHandler = null;
+        private static DeviceStreamDeviceHelper deviceStreamDeviceHandler = null;
         
-        private DeviceClient _deviceClient;
+        private DeviceStreamClientWrapper _streamClient;
                 
         public String TargetHost { get; set; }
         public int TargetPort { get; set; }
@@ -34,89 +34,13 @@ namespace DeviceStreamCommon
         /// <param name="moduleClient"></param>
         /// <param name="host"></param>
         /// <param name="port"></param>
-        public DeviceStreamDeviceHandler(DeviceClient deviceClient)
+        public DeviceStreamDeviceHelper(DeviceStreamClientWrapper streamClient)
         {
-            _deviceClient = deviceClient;
+            _streamClient = streamClient;
            
             ActiveSession = false;
         }
-
-
-                
-        /// <summary>
-        /// The Direct Method handler that initiate the device stream session if required.
-        /// </summary>
-        /// <param name="methodRequest"></param>
-        /// <param name="parameter"></param>
-        /// <returns></returns>
-        public static async Task<MethodResponse> InitiateDeviceStreamMethodHandler(MethodRequest methodRequest, object parameter)
-        {             
-            Console.WriteLine("InitiateDeviceStreamMethod was invoked remoetly to enable DeviceStream!");
-
-            //i'm expecting a Device Client and the Cancelation Token Source as parameter...
-            Tuple<DeviceClient, CancellationTokenSource> parameters = (Tuple<DeviceClient, CancellationTokenSource>)parameter;
-
-            DeviceClient deviceClient = parameters.Item1;
-            CancellationTokenSource cancellationTokenSource = parameters.Item2;            
-
-            InitiateDeviceStreamRequest initiateDeviceStreamRequest = InitiateDeviceStreamRequest.FromJson(methodRequest.DataAsJson);
-            InitiateDeviceStreamResponse initiateDeviceStreamResponse = new InitiateDeviceStreamResponse();
-
-            bool initiate = false;
-
-            if (deviceStreamDeviceHandler == null)
-            {
-                //first request of a Device Stream...   create the handler class...
-                deviceStreamDeviceHandler = new DeviceStreamDeviceHandler(deviceClient);
-                deviceStreamDeviceHandler.TargetHost = initiateDeviceStreamRequest.TargetHost;
-                deviceStreamDeviceHandler.TargetPort = initiateDeviceStreamRequest.TargetPort;
-
-                //prepare the response to the direct method....
-                initiateDeviceStreamResponse.RequestAccepted = true;
-                initiateDeviceStreamResponse.Reason = "This is a brand new session!";
-
-                initiate = true;
-            }
-            else
-            {
-                if (deviceStreamDeviceHandler.ActiveSession)
-                {
-                    //a session is already there...    cannot initiate a new one 
-                    initiateDeviceStreamResponse.RequestAccepted = false;
-                    initiateDeviceStreamResponse.Reason = "A session is already open.";
-
-                    Console.WriteLine(initiateDeviceStreamResponse.Reason);
-                }
-                else
-                {
-                    Console.WriteLine("Probably recovering from a bad status, just reconnecting!");
-
-                    initiateDeviceStreamResponse.RequestAccepted = true;
-                    initiateDeviceStreamResponse.Reason = "A session was alrady open but not active, reinitiating.";
-
-                    deviceStreamDeviceHandler.TargetHost = initiateDeviceStreamRequest.TargetHost;
-                    deviceStreamDeviceHandler.TargetPort = initiateDeviceStreamRequest.TargetPort;
-
-                    Console.WriteLine(initiateDeviceStreamResponse.Reason);
-
-                    initiate = true;
-                }
-            }
-
-            if (initiate)
-            {
-                Console.WriteLine("Starting Device Stream");
-
-                //start a background task opening the Device Stream session and waiting for connection from the service side
-                Task.Factory.StartNew(() => deviceStreamDeviceHandler.StartDeviceStreamSession(cancellationTokenSource));
-            }
-
-            Console.WriteLine($"Returning the Direct Method response: {initiateDeviceStreamResponse.RequestAccepted} - {initiateDeviceStreamResponse.Reason}");
-
-            return new MethodResponse(initiateDeviceStreamResponse.GetJsonByte(), 200);
-        }
-
-
+        
 
 
         private static async Task HandleIncomingDataAsync(NetworkStream localStream, ClientWebSocket remoteStream, CancellationToken cancellationToken)
@@ -150,6 +74,112 @@ namespace DeviceStreamCommon
 
 
 
+        //static instance of this handler class
+        private static DeviceStreamDeviceHelper deviceStreamModuleHandler = null;
+
+        /// <summary>
+        /// The name of the Direct Method to initiate to listen for a Device Stream request from the device side.
+        /// </summary>
+        public const string InitiateDeviceStream = "InitiateDeviceStream";
+
+        /// <summary>
+        /// Direct Method delegate handler....
+        /// </summary>
+        /// <param name="methodRequest"></param>
+        /// <param name="parameter"></param>
+        /// <returns></returns>
+        public static async Task<MethodResponse> InitiateDeviceStreamMethodHandler(MethodRequest methodRequest, object parameter)
+        {
+            Console.WriteLine("InitiateDeviceStreamMethod was invoked remotely to enable DeviceStream!");
+
+            //i'm expecting a Device Client and the Cancelation Token Source as parameter...
+            Tuple<DeviceStreamClientWrapper, CancellationTokenSource> parameters = (Tuple<DeviceStreamClientWrapper, CancellationTokenSource>)parameter;
+
+            Console.WriteLine("DirectMethodParameters deboxed.");
+
+            DeviceStreamClientWrapper deviceStreamClientWrapper = parameters.Item1;
+            CancellationTokenSource cancellationTokenSource = parameters.Item2;
+
+            var directMethodRequestJson = methodRequest.DataAsJson;
+
+            Console.WriteLine($"Deserializing DirectMethod request: {directMethodRequestJson}");
+
+            InitiateDeviceStreamRequest initiateDeviceStreamRequest = InitiateDeviceStreamRequest.FromJson(directMethodRequestJson);
+            InitiateDeviceStreamResponse initiateDeviceStreamResponse = new InitiateDeviceStreamResponse();
+
+            Console.WriteLine("Deserialization done.");
+
+            bool initiate = false;
+
+            if (!string.IsNullOrEmpty(initiateDeviceStreamRequest.UseDeviceConnectionString))
+            {
+                //ok the direct method we got also a connection string for an alternative device identity to use to listen for device stream request
+                //this could be used as alternative ways on IoT Edge Modules
+
+                Console.WriteLine("Using an alternative DeviceClient to establish the Device Stream Connection");
+
+                //in this case use an alternative Device Client 
+                DeviceClient deviceClient = DeviceClient.CreateFromConnectionString(initiateDeviceStreamRequest.UseDeviceConnectionString);
+
+                //and update the "wrapper" client.
+                deviceStreamClientWrapper = new DeviceStreamClientWrapper(deviceClient);
+            }
+
+            if (deviceStreamModuleHandler == null)
+            {
+                deviceStreamModuleHandler = new DeviceStreamDeviceHelper(deviceStreamClientWrapper);
+
+                //set the target host and port
+                deviceStreamModuleHandler.TargetHost = initiateDeviceStreamRequest.TargetHost;
+                deviceStreamModuleHandler.TargetPort = initiateDeviceStreamRequest.TargetPort;
+
+                initiateDeviceStreamResponse.RequestAccepted = true;
+                initiateDeviceStreamResponse.Reason = "This is a brand new session!";
+
+                initiate = true;
+
+                Console.WriteLine(initiateDeviceStreamResponse.Reason);
+            }
+            else
+            {
+                if (deviceStreamModuleHandler.ActiveSession)
+                {
+                    //a session is already there...    cannot initiate a new one / don't want to terminate an existing session
+                    initiateDeviceStreamResponse.RequestAccepted = false;
+                    initiateDeviceStreamResponse.Reason = "A session is already open.";
+
+                    Console.WriteLine(initiateDeviceStreamResponse.Reason);
+                }
+                else
+                {
+                    Console.WriteLine("Probably recovering from a bad status, just reconnecting!");
+
+                    initiateDeviceStreamResponse.RequestAccepted = true;
+                    initiateDeviceStreamResponse.Reason = "A session was alrady open but not active, reinitiating.";
+
+                    deviceStreamModuleHandler.TargetHost = initiateDeviceStreamRequest.TargetHost;
+                    deviceStreamModuleHandler.TargetPort = initiateDeviceStreamRequest.TargetPort;
+
+                    Console.WriteLine(initiateDeviceStreamResponse.Reason);
+
+                    initiate = true;
+                }
+            }
+
+            if (initiate)
+            {
+                Console.WriteLine("Starting Device Stream");
+
+                //start a background task opening the Device Stream session and waiting for connection from the service side                
+                await Task.Factory.StartNew(() => deviceStreamModuleHandler.StartDeviceStreamSession(cancellationTokenSource));
+            }
+
+            Console.WriteLine($"Returning the Direct Method response: {initiateDeviceStreamResponse.RequestAccepted} - {initiateDeviceStreamResponse.Reason}");
+
+            return new MethodResponse(initiateDeviceStreamResponse.GetJsonByte(), 200);
+        }
+
+
 
         /// <summary>
         /// Start the Device Stream Session   ---> this is async....  and go as simple as that....  
@@ -164,7 +194,7 @@ namespace DeviceStreamCommon
             try
             {   
                 //wait for a device stream request from the service side....
-                DeviceStreamRequest streamRequest = await _deviceClient.WaitForDeviceStreamRequestAsync(cancellationTokenSource.Token).ConfigureAwait(false);
+                DeviceStreamRequest streamRequest = await _streamClient.WaitForDeviceStreamRequestAsync(cancellationTokenSource.Token).ConfigureAwait(false);
 
                 Console.WriteLine("Stream Request received from IoT Hub");
 
@@ -172,7 +202,7 @@ namespace DeviceStreamCommon
                 {
                     Console.WriteLine("Now accepting Stream Request received from IoT Hub");
 
-                    await _deviceClient.AcceptDeviceStreamRequestAsync(streamRequest, cancellationTokenSource.Token).ConfigureAwait(false);
+                    await _streamClient.AcceptDeviceStreamRequestAsync(streamRequest, cancellationTokenSource.Token).ConfigureAwait(false);
 
                     Console.WriteLine("Now Opening WebSocket stream to IoT Hub");
 

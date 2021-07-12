@@ -8,7 +8,7 @@ using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace DeviceStreamUtil
+namespace DeviceStreamCLI
 {
     class Program
     {
@@ -16,9 +16,14 @@ namespace DeviceStreamUtil
         private static IConfiguration configuration;
       
 
-        private static string ioTHubconnectionString = null; //IOTHUB_CONNECTIONSTRING
+        private static string ioTHubConnectionString = null; //IOTHUB_CONNECTIONSTRING
         private static string deviceId = null;  //DEVICE_ID
         private static string moduleName = null;  //MODULE_NAME (optional)
+
+        //if provided this information ---> on the end side will use an additional device client to establish the connnection (even if running within a module)
+        private static string alternativeDeviceId = null;  // (optional)
+        private static string alternativeDeviceConnectionString = null;  //(optional)
+
         private static int localPort; //LOCAL_PORT
         private static string streamName = null; //STREAM_NAME
         private static string remoteHost = null;  //REMOTE_HOST
@@ -37,14 +42,14 @@ namespace DeviceStreamUtil
              .AddCommandLine(args)
              .Build();
 
-            Console.WriteLine("Hellp DeviceStreamUtil!");
+            Console.WriteLine("Hello DeviceStreamCLI!");
             Console.WriteLine("-----------------------");
 
 
             //checking configuration requirements
-            ioTHubconnectionString = configuration.GetValue<string>("IOTHUB_CONNECTIONSTRING");
+            ioTHubConnectionString = configuration.GetValue<string>("IOTHUB_CONNECTIONSTRING");
 
-            if (string.IsNullOrEmpty(ioTHubconnectionString))
+            if (string.IsNullOrEmpty(ioTHubConnectionString))
             {
                 Console.WriteLine("This tool requires a <IOTHUB_CONNECTIONSTRING> parameter to connect to IoT Hub to initiate the Device Stream connection.");
                 return;
@@ -60,7 +65,15 @@ namespace DeviceStreamUtil
 
             //module name can be optional
             moduleName = configuration.GetValue<string>("MODULE_NAME",null);
-            
+
+            //can be optional
+            alternativeDeviceId = configuration.GetValue<string>("ALTENRATIVE_DEVICE_ID", null);
+
+            //can be optional
+            alternativeDeviceConnectionString = configuration.GetValue<string>("ALTENRATIVE_DEVICE_CONNECTIONSTRING", null);
+
+
+
             localPort = configuration.GetValue<int>("LOCAL_PORT",0);
 
             if (localPort==0)
@@ -96,25 +109,38 @@ namespace DeviceStreamUtil
             var cts = new CancellationTokenSource();
 
             //initiate a client to IoT Hub 
-            ServiceClient serviceClient = ServiceClient.CreateFromConnectionString(ioTHubconnectionString, transportType);
+            ServiceClient serviceClient = ServiceClient.CreateFromConnectionString(ioTHubConnectionString, transportType);
             
             Console.WriteLine("Service Client connected");
 
             //initiating the Direct Method to start the stream on the other end...
-            var methodRequest = new CloudToDeviceMethod(DeviceStreamDirectMethods.InitiateDeviceStream);
+            var methodRequest = new CloudToDeviceMethod(                
+                DeviceStreamDeviceHelper.InitiateDeviceStream //constant with the Direct Method name
+                );
 
-            InitiateDeviceStreamRequest requestPayload = new InitiateDeviceStreamRequest() { TargetHost = remoteHost, TargetPort = remotePort };
+            InitiateDeviceStreamRequest requestPayload = new InitiateDeviceStreamRequest() { 
+                TargetHost = remoteHost, 
+                TargetPort = remotePort, 
+                //the use device connection string could be also null....  if it has a valid connection string then the end device will open the device stream as another client
+                UseDeviceConnectionString = alternativeDeviceConnectionString };
 
             methodRequest.SetPayloadJson(requestPayload.ToJson());
 
             //perform a Direct Method to the remote device to initiate the device stream!
             CloudToDeviceMethodResult response = null;
 
-            if (!string.IsNullOrEmpty(moduleName))
-            { 
-                Console.WriteLine($"Performing remote Module DirectMethod call to Device: {deviceId} Module: {moduleName} to enable Device Stream on remote host: {remoteHost}:{remotePort}");
+            if (!string.IsNullOrEmpty(moduleName)) 
+            {        
+                if (string.IsNullOrEmpty(alternativeDeviceConnectionString))
+                {
+                    Console.WriteLine("--------------------------\nNOTICE: for Module initiated Device Stream unfortunately you can't rely onthe Module Identity to initiate the Device Stream process since actually is not supported.\n--------------------------");
+                }
 
-                response = await serviceClient.InvokeDeviceMethodAsync(deviceId, moduleName, methodRequest);
+                return;
+
+                //Console.WriteLine($"Performing remote Module DirectMethod call to Device: {deviceId} Module: {moduleName} to enable Device Stream on remote host: {remoteHost}:{remotePort}");
+
+                //response = await serviceClient.InvokeDeviceMethodAsync(deviceId, moduleName, methodRequest);
             }
             else
             {
@@ -131,8 +157,27 @@ namespace DeviceStreamUtil
                 {
                     Console.WriteLine($"Device Stream request accepted: {responseBody.Reason}");
 
-                    var deviceStreamClientHandler = new DeviceStreamClientHandler(serviceClient, deviceId, localPort, streamName,cts);
+                    DeviceStreamClientHelper deviceStreamClientHandler = null;
 
+                    if (string.IsNullOrEmpty(alternativeDeviceId))
+                    {
+                        //check if module is null then initiate a device stream to a device client
+                        if (string.IsNullOrEmpty(moduleName))
+                        {
+                            deviceStreamClientHandler = new DeviceStreamClientHelper(serviceClient, deviceId, localPort, streamName, cts);
+                        }
+                        else
+                        {
+                            deviceStreamClientHandler = new DeviceStreamClientHelper(serviceClient, deviceId, moduleName, localPort, streamName, cts);
+                        }
+                    }
+                    else
+                    {
+                        //use an alternative device id (device side the direct method call will initialize a new DeviceClient for this device id and initiate the device stream via this alternative device identity)
+                        //this is a workaround for running as Module since actually unsupported
+                        deviceStreamClientHandler = new DeviceStreamClientHelper(serviceClient, alternativeDeviceId, localPort, streamName, cts);
+                    }
+                    
                     //start streaming session when an incoming request will happens
                     await deviceStreamClientHandler.StartListeningLocalPort();
 

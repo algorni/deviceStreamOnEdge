@@ -13,35 +13,54 @@ using System.Threading.Tasks;
 
 namespace DeviceStreamCommon
 {
-    public class DeviceStreamClientHandler
+    public class DeviceStreamClientHelper
     {
         private CancellationTokenSource _cancellationTokenSource;
         private ServiceClient _serviceClient;
-        private String _deviceId;
+        private string _deviceId;
+        private string _moduleId;
         private int _localPort;
         private string _streamName;
 
 
 
         /// <summary>
-        /// ctor
+        /// ctor for device stream
         /// </summary>
-        /// <param name="deviceClient"></param>
+        /// <param name="serviceClient"></param>
         /// <param name="deviceId"></param>
         /// <param name="localPort"></param>
         /// <param name="streamName"></param>
-        public DeviceStreamClientHandler(ServiceClient deviceClient, String deviceId, int localPort, string streamName, CancellationTokenSource cancellationTokenSource)
+        public DeviceStreamClientHelper(ServiceClient serviceClient, string deviceId, int localPort, string streamName, CancellationTokenSource cancellationTokenSource)
         {
-            _serviceClient = deviceClient;
+            _serviceClient = serviceClient;
             _deviceId = deviceId;
             _localPort = localPort;
             _streamName = streamName;
             _cancellationTokenSource = cancellationTokenSource;
         }
-        
-        
-        
-        
+
+
+        /// <summary>
+        /// ctor for module stream
+        /// </summary>
+        /// <param name="serviceClient"></param>
+        /// <param name="deviceId"></param>
+        /// <param name="moduleId"></param>
+        /// <param name="localPort"></param>
+        /// <param name="streamName"></param>
+        /// <param name="cancellationTokenSource"></param>
+        public DeviceStreamClientHelper(ServiceClient serviceClient, string deviceId, string moduleId, int localPort, string streamName, CancellationTokenSource cancellationTokenSource)
+        {
+            _serviceClient = serviceClient;
+            _deviceId = deviceId;
+            _localPort = localPort;
+            _streamName = streamName;
+            _cancellationTokenSource = cancellationTokenSource;
+        }
+
+
+
         private static async Task HandleIncomingDataAsync(NetworkStream localStream, ClientWebSocket remoteStream, CancellationToken cancellationToken)
         {         
             byte[] bufferObj = new byte[10240];
@@ -72,21 +91,30 @@ namespace DeviceStreamCommon
         }
 
 
-        private static async void HandleIncomingConnectionsAndStartStreamSession(string deviceId, ServiceClient serviceClient, TcpClient tcpClient, string streamName, CancellationTokenSource cancellationTokenSource)
+        private static async void HandleIncomingConnectionsAndStartStreamSession(string deviceId, string moduleId, ServiceClient serviceClient, TcpClient tcpClient, string streamName, CancellationTokenSource cancellationTokenSource)
         {
             var deviceStreamRequest = new Microsoft.Azure.Devices.DeviceStreamRequest(streamName);
 
             using (var localStream = tcpClient.GetStream())
             {
-                var result = await serviceClient.CreateStreamAsync(deviceId, deviceStreamRequest, CancellationToken.None).ConfigureAwait(false);
+                DeviceStreamResponse deviceStreamResponse = null;
 
-                Console.WriteLine($"Stream response received: Name={deviceStreamRequest.StreamName} IsAccepted={result.IsAccepted}");
+                if (string.IsNullOrEmpty(moduleId))
+                {
+                    deviceStreamResponse = await serviceClient.CreateStreamAsync(deviceId, deviceStreamRequest, CancellationToken.None).ConfigureAwait(false);
+                }
+                else
+                {
+                    deviceStreamResponse = await serviceClient.CreateStreamAsync(deviceId, moduleId, deviceStreamRequest, CancellationToken.None).ConfigureAwait(false);
+                }                
 
-                if (result.IsAccepted)
+                Console.WriteLine($"Stream response received: Name={deviceStreamRequest.StreamName} IsAccepted={deviceStreamResponse.IsAccepted}");
+
+                if (deviceStreamResponse.IsAccepted)
                 {
                     try
                     {
-                        using (var remoteStream = await DeviceStreamCommon.StreamingClientHelper.GetStreamingClientAsync(result.Uri, result.AuthorizationToken, cancellationTokenSource.Token).ConfigureAwait(false))
+                        using (var remoteStream = await DeviceStreamCommon.StreamingClientHelper.GetStreamingClientAsync(deviceStreamResponse.Uri, deviceStreamResponse.AuthorizationToken, cancellationTokenSource.Token).ConfigureAwait(false))
                         {
                             Console.WriteLine("Starting streaming");
 
@@ -128,7 +156,7 @@ namespace DeviceStreamCommon
 
             Console.WriteLine($"Incoming connectionon port {_localPort} start handling...");
 
-            Task.Factory.StartNew(() => HandleIncomingConnectionsAndStartStreamSession(_deviceId, _serviceClient, tcpClient, _streamName, _cancellationTokenSource) );                  
+            await Task.Factory.StartNew(() => HandleIncomingConnectionsAndStartStreamSession(_deviceId, _moduleId, _serviceClient, tcpClient, _streamName, _cancellationTokenSource) );                  
         }
     }
 }
