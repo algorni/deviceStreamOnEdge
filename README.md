@@ -10,7 +10,7 @@ Even in this case the new alternative identity is not part of the Module configu
 That identity will be provided as payload of the Direct Method call.
 
 >Please remember, this is a quick and dirty example, take this as it is without any warrenty that this fits / works for your specifc use case.
-Remember that give Device Stream is still in Public Preview is available without any specific SLA and with all the caviet of a Preview Service that you can find here: https://azure.microsoft.com/en-us/support/legal/preview-supplemental-terms/
+Remember that Device Stream is still in Public Preview therefore is available without any specific SLA and with all the caviet of a Preview Service that you can find here: https://azure.microsoft.com/en-us/support/legal/preview-supplemental-terms/
 
 ---
 
